@@ -172,15 +172,21 @@
 <nav>
   <a href="/" class="nav-logo">GitHub <span>AI</span> Planner</a>
   <div class="nav-right">
-    {% if user %}
+    {% if request.session.github_user and not request.session.github_user.is_guest %}
       <a href="/plans/new/" class="btn btn-primary btn-sm">+ 새 플랜</a>
       <div class="nav-user">
-        {% if user.avatar_url %}
-          <img src="{{ user.avatar_url }}" alt="avatar"/>
+        {% if request.session.github_user.avatar_url %}
+          <img src="{{ request.session.github_user.avatar_url }}" alt="avatar"/>
         {% endif %}
-        <span>{{ user.name|default:user.login }}</span>
+        <span>{{ request.session.github_user.name|default:request.session.github_user.login }}</span>
       </div>
       <a href="/accounts/logout/" class="btn btn-secondary btn-sm">로그아웃</a>
+
+    {% elif request.session.github_user.is_guest %}
+      <span class="badge badge-orange">⚠️ 게스트 모드</span>
+      <a href="/accounts/login/" class="btn btn-primary btn-sm">GitHub 계정 연동하기</a>
+      <a href="/accounts/logout/" class="btn btn-secondary btn-sm">로그아웃</a>
+
     {% else %}
       <a href="/accounts/login/" class="btn btn-primary btn-sm">GitHub 로그인</a>
     {% endif %}

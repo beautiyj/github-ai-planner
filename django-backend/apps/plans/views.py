@@ -4,40 +4,14 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.views import View
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
+from django.db.models import Q  # 👈 게스트용 오어(OR) 조회를 위해 추가
 
 from .models import ProjectPlan, DailySummary
-
-# 0406 커밋용주석 - 프로젝트 플랜 저장/조회/삭제 로직이랑 페이지 뷰 전체
-"""
-브라우저 (HTML)              백엔드 (views.py)
-─────────────────────────────────────────────
-버튼 클릭                →   GET / POST 요청 받음
-fetch("/plans/", ...)    →   PlanListView.post() 실행
-form 제출                →   DB에 저장
-결과 받아서 화면에 표시  ←   JsonResponse 반환
-
-urls.py   → 어떤 URL이 어떤 View로 갈지 지도 역할
-views.py  → 실제 로직 처리 (DB 저장, AI 호출 등)
-models.py → DB 테이블 구조 정의
-templates → HTML 화면 (사용자가 보는 것)
-
-사용자가 "플랜 저장" 버튼 클릭 (HTML)
-→ JavaScript fetch("/plans/", {method: "POST"})
-→ urls.py 가 PlanListView로 연결
-→ views.py 의 post() 가 DB에 저장
-→ {"success": True, "plan_id": 1} 반환
-→ JS가 받아서 /plans/1/page/ 로 이동
-→ views.py 의 PlanPageView.get() 이 HTML 렌더링
-→ 사용자에게 플랜 상세 페이지 보여줌
-
-"""
 
 
 # 공통 데코레이터 ──────────────────────────────────────────────────────────────
 
-# 로그인확인용 함수 (깃허브로그인용)
 def login_required_redirect(view_func):
-    # 로그인 안 된 경우 메인 페이지로 리다이렉트
     def wrapper(request, *args, **kwargs):
         if not request.session.get("github_user"):
             return redirect("/")
@@ -46,9 +20,7 @@ def login_required_redirect(view_func):
     return wrapper
 
 
-# 로그인확인용 함수 (API 요청용)
 def login_required_json(view_func):
-    # 로그인 실패 JSON 401 반환
     def wrapper(request, *args, **kwargs):
         if not request.session.get("github_user"):
             return JsonResponse({"error": "로그인이 필요합니다."}, status=401)
@@ -59,25 +31,26 @@ def login_required_json(view_func):
 
 # GET / ─────────────────────────────────────────────────────────────
 class MainView(View):
-    """로그인 전: 랜딩 / 로그인 후: 대시보드 리다이렉트"""
-
     def get(self, request):
         github_user = request.session.get("github_user")
         if github_user:
             return redirect("/dashboard/")
-        # github_user를 명시적으로 None으로 넘겨서 템플릿 user와 구분
         return render(request, "base/index.html", {"user": None})
 
 
 # ── GET /dashboard/ ───────────────────────────────────────────
 class DashboardView(View):
-    """로그인 후 메인 대시보드"""
+    """로그인 후 또는 게스트용 메인 대시보드"""
 
-    # 클래스기반뷰 상태라서 @ 붙여줌 (원래 일반함수용으로 사용해야함)
     @method_decorator(login_required_redirect)
     def get(self, request):
         github_user = request.session.get("github_user")
-        plans = ProjectPlan.objects.filter(github_login=github_user["login"])
+
+        # 💡 [수정] 내 계정명(beautiyj)이거나 내 게스트 세션 키인 플랜을 모두 가져옴
+        plans = ProjectPlan.objects.filter(
+            Q(github_login=github_user["login"]) |
+            Q(guest_session_key=request.session.session_key)
+        )
         return render(request, "dashboard/index.html", {
             "user": github_user,
             "plans": plans,
@@ -86,8 +59,6 @@ class DashboardView(View):
 
 # ── GET /plans/new/ ───────────────────────────────────────────
 class PlanFormPageView(View):
-    """플랜 생성 폼 HTML 페이지"""
-
     @method_decorator(login_required_redirect)
     def get(self, request):
         github_user = request.session.get("github_user")
@@ -102,8 +73,11 @@ class PlanListView(View):
     def get(self, request):
         """내 플랜 목록 JSON 반환"""
         github_user = request.session.get("github_user")
+
+        # 💡 [수정] 목록 조회시에도 내 계정이거나 내 세션 키인 데이터를 필터링
         plans = ProjectPlan.objects.filter(
-            github_login=github_user["login"]
+            Q(github_login=github_user["login"]) |
+            Q(guest_session_key=request.session.session_key)
         ).values("id", "title", "purposes", "date_start", "date_end", "created_at")
         return JsonResponse({"success": True, "plans": list(plans)})
 
@@ -116,8 +90,16 @@ class PlanListView(View):
             return JsonResponse({"error": "잘못된 JSON 형식입니다."}, status=400)
 
         github_user = request.session.get("github_user")
+        is_guest = github_user.get("is_guest", False) if github_user else False
+
+        # 💡 [수정] 게스트 상태라면 장고가 무조건 세션 키를 유지하도록 확인
+        if is_guest and not request.session.session_key:
+            request.session.create()
+
+        # 💡 [핵심 교정] 게스트 여부에 따라 guest_session_key를 완벽하게 심어줌
         plan = ProjectPlan.objects.create(
             github_login=github_user["login"],
+            guest_session_key=request.session.session_key if is_guest else None,  # 👈 추가!
             title=body.get("title", ""),
             purposes=body.get("purposes", []),
             date_start=body.get("date_start") or None,
@@ -142,8 +124,11 @@ class PlanDetailView(View):
     def get(self, request, plan_id):
         """플랜 상세 JSON 반환"""
         github_user = request.session.get("github_user")
+
+        # 💡 [수정] 내 소유의 플랜이거나 내 임시 세션용 플랜인지 함께 판단
         plan = get_object_or_404(
-            ProjectPlan, id=plan_id, github_login=github_user["login"]
+            ProjectPlan,
+            Q(id=plan_id) & (Q(github_login=github_user["login"]) | Q(guest_session_key=request.session.session_key))
         )
         summaries = list(plan.daily_summaries.values(
             "date", "ai_summary", "mood", "progress_percent", "highlight"
@@ -170,7 +155,8 @@ class PlanDetailView(View):
         """플랜 삭제"""
         github_user = request.session.get("github_user")
         plan = get_object_or_404(
-            ProjectPlan, id=plan_id, github_login=github_user["login"]
+            ProjectPlan,
+            Q(id=plan_id) & (Q(github_login=github_user["login"]) | Q(guest_session_key=request.session.session_key))
         )
         plan.delete()
         return JsonResponse({"success": True, "message": "플랜이 삭제되었습니다."})
@@ -184,7 +170,8 @@ class PlanPageView(View):
     def get(self, request, plan_id):
         github_user = request.session.get("github_user")
         plan = get_object_or_404(
-            ProjectPlan, id=plan_id, github_login=github_user["login"]
+            ProjectPlan,
+            Q(id=plan_id) & (Q(github_login=github_user["login"]) | Q(guest_session_key=request.session.session_key))
         )
         summaries = plan.daily_summaries.all()[:7]
         return render(request, "plans/detail.html", {
@@ -208,7 +195,8 @@ class SaveSummaryView(View):
 
         github_user = request.session.get("github_user")
         plan = get_object_or_404(
-            ProjectPlan, id=plan_id, github_login=github_user["login"]
+            ProjectPlan,
+            Q(id=plan_id) & (Q(github_login=github_user["login"]) | Q(guest_session_key=request.session.session_key))
         )
         summary_data = body.get("summary", {})
 
