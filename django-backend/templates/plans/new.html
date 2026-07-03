@@ -1,0 +1,557 @@
+{% extends "base/base.html" %}
+{% block title %}새 플랜 만들기 - GitHub AI Planner{% endblock %}
+
+{% block extra_css %}
+<style>
+    .form-wrap { max-width: 680px; margin: 0 auto; }
+    .chip-group { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--bg3);
+      color: var(--text2);
+      transition: all .15s;
+      user-select: none;
+    }
+    .chip.on {
+      background: #1f3a5f;
+      border-color: var(--accent);
+      color: var(--accent);
+      font-weight: 500;
+    }
+    .skill-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .skill-row:last-child { border-bottom: none; }
+    .skill-name { min-width: 100px; font-size: 13px; }
+    .skill-levels { display: flex; gap: 4px; flex: 1; }
+    .lvl {
+      flex: 1;
+      padding: 5px 0;
+      text-align: center;
+      font-size: 12px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--bg3);
+      color: var(--text2);
+      transition: all .15s;
+    }
+    .lvl.on {
+      background: #1f3a5f;
+      border-color: var(--accent);
+      color: var(--accent);
+      font-weight: 500;
+    }
+    .lvl.none {
+      background: var(--bg3);
+      border-color: var(--border);
+      color: var(--text2);
+      opacity: 0.4;
+    }
+    .date-toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .toggle-wrap { position: relative; width: 36px; height: 20px; }
+    .toggle-wrap input { opacity: 0; width: 0; height: 0; }
+    .toggle-track {
+      position: absolute; inset: 0;
+      background: var(--border);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background .2s;
+    }
+    .toggle-track::before {
+      content: '';
+      position: absolute;
+      width: 14px; height: 14px;
+      left: 3px; top: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform .2s;
+    }
+    .toggle-wrap input:checked ~ .toggle-track { background: var(--accent2); }
+    .toggle-wrap input:checked ~ .toggle-track::before { transform: translateX(16px); }
+    .date-inputs { display: flex; align-items: center; gap: 10px; }
+    .date-inputs input[type=date] { max-width: 160px; }
+    .ai-result {
+      margin-top: 24px;
+      border: 1px solid var(--accent2);
+      border-radius: var(--radius);
+      padding: 20px;
+      background: #0d1f36;
+      display: none;
+    }
+    .ai-result.show { display: block; }
+    .ai-result-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 12px;
+    }
+    .ai-analysis {
+      background: var(--bg3);
+      border-radius: var(--radius);
+      padding: 12px;
+      font-size: 13px;
+      line-height: 1.6;
+      margin-bottom: 16px;
+    }
+    .milestone-list { display: flex; flex-direction: column; gap: 10px; }
+    .milestone-item { display: flex; gap: 12px; align-items: flex-start; }
+    .milestone-range {
+      min-width: 120px;
+      font-size: 12px;
+      color: var(--text2);
+      padding-top: 2px;
+      font-family: monospace;
+    }
+    .milestone-task { font-size: 13px; line-height: 1.5; }
+    .milestone-tags { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+    .warning-box {
+      background: #3a2a10;
+      border: 1px solid var(--orange);
+      border-radius: var(--radius);
+      padding: 10px 14px;
+      font-size: 13px;
+      color: var(--orange);
+      margin-bottom: 14px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="form-wrap">
+        <div class="page-title">새 플랜 만들기</div>
+        <div class="page-subtitle">
+            정보를 입력하면 AI가 프로젝트 일정을 추천해드려요.
+        </div>
+
+        <!-- 제목 -->
+        <div class="form-group">
+            <label class="form-label">
+                프로젝트 제목 <span class="required">*</span>
+            </label>
+            <input type="text" id="title" class="form-input"
+                   placeholder="미정이면 목표를 간단히 적어주세요"/>
+        </div>
+
+        <!-- 목적 -->
+        <div class="form-group">
+            <label class="form-label">
+                프로젝트 목적 <span class="required">*</span>
+            </label>
+            <div class="chip-group" id="purpose-chips">
+                <div class="chip on" onclick="toggleChip(this)">포트폴리오</div>
+                <div class="chip" onclick="toggleChip(this)">실무 투입</div>
+                <div class="chip" onclick="toggleChip(this)">개인 프로젝트</div>
+                <div class="chip" onclick="toggleChip(this)">팀 프로젝트</div>
+                <div class="chip" onclick="toggleChip(this)">학습용</div>
+                <div class="chip" onclick="toggleChip(this)">오픈소스</div>
+            </div>
+        </div>
+
+        <!-- 기간 -->
+        <div class="form-group">
+            <div class="date-toggle-row">
+                <span class="form-label" style="margin:0">기간 설정</span>
+                <label class="toggle-wrap">
+                    <input type="checkbox" id="date-toggle" onchange="toggleDate(this)"/>
+                    <span class="toggle-track"></span>
+                </label>
+                <span class="text-muted" style="font-size:12px">기간 미정이면 OFF</span>
+            </div>
+            <div class="date-inputs" id="date-row"
+                 style="opacity:.4; pointer-events:none">
+                <input type="date" id="date-start" class="form-input"/>
+                <span class="text-muted">~</span>
+                <input type="date" id="date-end" class="form-input"/>
+                <span id="date-diff" class="text-accent"
+                      style="font-size:12px; white-space:nowrap"></span>
+            </div>
+        </div>
+
+        <!-- 기술 & 수준 -->
+        <div class="form-group">
+            <label class="form-label">보유 기술 & 수준</label>
+            <div class="card" style="padding:12px">
+                <div id="skill-list"></div>
+            </div>
+        </div>
+
+        <!-- 기타 툴/프로그램 -->
+        <div class="form-group">
+            <label class="form-label">
+                사용 가능한 툴 & 프로그램
+                <span class="text-muted">(선택)</span>
+            </label>
+            <input type="text" id="tools" class="form-input"
+                   placeholder="예: Figma, Android Studio, IntelliJ, MySQL Workbench, Docker..."/>
+            <div style="font-size:12px; color:var(--text2); margin-top:4px">
+                IDE, 디자인 툴, DB 툴, 협업 툴 등 자유롭게 입력
+            </div>
+        </div>
+
+        <!-- 구현 기능 -->
+        <div class="form-group">
+            <label class="form-label">
+                구현하고 싶은 기능 <span class="required">*</span>
+            </label>
+            <textarea id="features" class="form-textarea"
+                      placeholder="예: GitHub 로그인, 커밋 내역 조회, AI 일정 추천...">
+      </textarea>
+        </div>
+
+        <!-- 레포 URL -->
+        <div class="form-group">
+            <label class="form-label">
+                연동할 GitHub 레포
+                <span class="text-muted">(선택)</span>
+            </label>
+            <input type="text" id="repo-url" class="form-input"
+                   placeholder="owner/repository-name"/>
+        </div>
+
+        <!-- AI 생성 버튼 -->
+        <button class="btn btn-primary"
+                style="width:100%; padding:13px; font-size:15px"
+                onclick="generatePlan()" id="gen-btn">
+            🤖 AI 플랜 생성하기
+        </button>
+
+        <!-- AI 결과 -->
+        <div class="ai-result" id="ai-result">
+            <div class="ai-result-title">AI 추천 플랜</div>
+            <div id="ai-content"></div>
+            <div class="flex gap-2 mt-4">
+                <button class="btn btn-primary" style="flex:1"
+                        onclick="savePlan()">이 플랜으로 시작하기
+                </button>
+                <button class="btn btn-secondary"
+                        onclick="generatePlan()">다시 생성
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // ── 기술 목록 초기값 ─────────────────────────────────────────
+    // level: -1 = 선택 안 함, 0 = 입문, 1 = 초급, 2 = 중급, 3 = 고급
+    const DEFAULT_SKILLS = [
+      { name: "Python",        level: -1 },
+      { name: "Java",          level: -1 },
+      { name: "Kotlin",        level: -1 },
+      { name: "백엔드",        level: -1 },
+      { name: "프론트엔드",    level: -1 },
+      { name: "DB / SQL",      level: -1 },
+      { name: "Android / iOS", level: -1 },  // Android → Android / iOS 수정
+    ];
+    const LEVELS = ["입문", "초급", "중급", "고급"];
+    let currentAiPlan = null;
+
+    // ── 스킬 행 렌더링 ────────────────────────────────────────────
+    function renderSkills() {
+      const container = document.getElementById("skill-list");
+      container.innerHTML = DEFAULT_SKILLS.map((skill, si) => `
+        <div class="skill-row">
+          <span class="skill-name">${skill.name}</span>
+          <div class="skill-levels">
+            <!-- 선택 안 함 버튼 -->
+            <div class="lvl ${skill.level === -1 ? "on" : ""}"
+                 onclick="setLevel(${si}, -1)"
+                 style="${skill.level === -1 ? "" : "opacity:0.5"}">선택 안 함</div>
+            ${LEVELS.map((lv, li) => `
+              <div class="lvl ${li === skill.level ? "on" : ""}"
+                   onclick="setLevel(${si}, ${li})">${lv}</div>
+            `).join("")}
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function setLevel(skillIdx, levelIdx) {
+      DEFAULT_SKILLS[skillIdx].level = levelIdx;
+      renderSkills();
+    }
+
+    // ── 칩 토글 ──────────────────────────────────────────────────
+    function toggleChip(el) { el.classList.toggle("on"); }
+
+    // ── 날짜 토글 ─────────────────────────────────────────────────
+    function toggleDate(cb) {
+      const row = document.getElementById("date-row");
+      row.style.opacity = cb.checked ? "1" : ".4";
+      row.style.pointerEvents = cb.checked ? "auto" : "none";
+    }
+
+    function calcDiff() {
+      const s = document.getElementById("date-start").value;
+      const e = document.getElementById("date-end").value;
+      const el = document.getElementById("date-diff");
+      if (!s || !e) { el.textContent = ""; return; }
+      const diff = Math.round((new Date(e) - new Date(s)) / 86400000);
+      el.textContent = diff > 0 ? `총 ${diff}일` : "";
+    }
+    document.getElementById("date-start").addEventListener("change", calcDiff);
+    document.getElementById("date-end").addEventListener("change", calcDiff);
+
+    // ── 폼 데이터 수집 ────────────────────────────────────────────
+    function getFormData() {
+      const dateOn = document.getElementById("date-toggle").checked;
+      return {
+        title:      document.getElementById("title").value.trim(),
+        purposes:   [...document.querySelectorAll("#purpose-chips .chip.on")]
+                      .map(el => el.textContent.trim()),
+        date_start: dateOn ? document.getElementById("date-start").value : "",
+        date_end:   dateOn ? document.getElementById("date-end").value : "",
+        // level -1 (선택 안 함) 은 AI 프롬프트에서 제외
+        skills:     DEFAULT_SKILLS
+                      .filter(s => s.level >= 0)
+                      .map(s => ({
+                        name: s.name,
+                        level: LEVELS[s.level]
+                      })),
+        features:   document.getElementById("features").value.trim(),
+        repo_url:   document.getElementById("repo-url").value.trim(),
+        tools:      document.getElementById("tools").value.trim(),
+      };
+    }
+
+    // ── AI 플랜 생성 ──────────────────────────────────────────────
+    async function generatePlan() {
+      const data = getFormData();
+
+      if (!data.title) {
+        alert("프로젝트 제목을 입력해주세요."); return;
+      }
+      if (!data.purposes.length) {
+        alert("목적을 하나 이상 선택해주세요."); return;
+      }
+      if (!data.features) {
+        alert("구현하고 싶은 기능을 입력해주세요."); return;
+      }
+
+      const btn = document.getElementById("gen-btn");
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> AI가 분석 중...';
+
+      try {
+        const res = await fetch("/ai/generate-plan/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+        const json = await res.json();
+        if (!res.ok) { alert(json.error || "오류가 발생했습니다."); return; }
+
+        currentAiPlan = json.ai_plan;
+        renderAiResult(json.ai_plan);
+
+      } catch (e) {
+        alert("네트워크 오류가 발생했습니다.");
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = "🤖 AI 플랜 생성하기";
+      }
+    }
+
+    // ── AI 결과 렌더링 ────────────────────────────────────────────
+    const TAG_CLASS = {
+      "백엔드": "badge-blue",
+      "프론트엔드": "badge-green",
+      "AI": "badge-orange",
+      "DB": "badge-purple",
+      "배포": "badge-red",
+      "기획": "badge-blue",
+    };
+
+    function renderAiResult(plan) {
+      const content = document.getElementById("ai-content");
+      const warning = plan.warning_message
+        ? `<div class="warning-box">⚠️ ${plan.warning_message}</div>` : "";
+
+      // ── 아이디어 카드 렌더링 ──────────────────────────────────
+      const ideasHtml = (plan.ideas && plan.ideas.length > 0)
+        ? `
+          <div style="margin-bottom:16px">
+            <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:10px">
+              💡 AI 추천 아이디어
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              ${plan.ideas.map(idea => `
+                <div style="
+                  background:var(--bg3);
+                  border:1px solid var(--border);
+                  border-radius:var(--radius);
+                  padding:14px;
+                  cursor:pointer;
+                  transition:border-color .15s;
+                "
+                onmouseover="this.style.borderColor='var(--accent)'"
+                onmouseout="this.style.borderColor='var(--border)'"
+                onclick="selectIdea(${idea.id})">
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+                    <span style="font-weight:600;font-size:13px">
+                      ${idea.id}. ${idea.title}
+                    </span>
+                    <span class="badge ${
+                      idea.difficulty === '하' ? 'badge-green' :
+                      idea.difficulty === '중' ? 'badge-orange' : 'badge-red'
+                    }">난이도 ${idea.difficulty}</span>
+                  </div>
+                  <div style="font-size:12px;color:var(--text2);margin-bottom:4px">
+                    🔧 ${idea.features}
+                  </div>
+                  <div style="font-size:12px;color:var(--accent)">
+                    ✨ ${idea.difference}
+                  </div>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        ` : "";
+
+      const milestones = (plan.milestones || []).map(m => `
+        <div class="milestone-item">
+          <div class="milestone-range">${m.range}</div>
+          <div style="flex:1">
+            <div class="milestone-task">${m.task}</div>
+            <div class="milestone-tags">
+              ${(m.tags || []).map(t =>
+                `<span class="badge ${TAG_CLASS[t] || "badge-blue"}">${t}</span>`
+              ).join("")}
+            </div>
+            ${m.detail
+              ? `<div style="font-size:12px;color:var(--text2);margin-top:4px">
+                   ${m.detail}
+                 </div>`
+              : ""}
+          </div>
+        </div>
+      `).join("");
+
+      content.innerHTML = `
+        ${warning}
+        <div class="ai-analysis">
+          <div style="font-weight:600;margin-bottom:6px">분석 결과</div>
+          <div>${plan.analysis}</div>
+          ${plan.stack_advice
+            ? `<div style="color:var(--text2);margin-top:6px">${plan.stack_advice}</div>`
+            : ""}
+          <div style="margin-top:8px;color:var(--accent);font-size:12px">
+            추천 기간: <strong>${plan.total_days}일</strong>
+            ${plan.recommended_end_date
+              ? ` · 완료 목표: ${plan.recommended_end_date}` : ""}
+            &nbsp;·&nbsp; 일 목표: ${plan.daily_goal}
+          </div>
+        </div>
+
+        ${ideasHtml}
+
+        <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:10px">
+          📋 마일스톤
+        </div>
+        <div class="milestone-list">${milestones}</div>
+
+        <!-- 수정 요청 영역 -->
+        <div style="margin-top:20px;padding-top:16px;border-top:1px dashed var(--border)">
+          <label class="form-label" style="color:var(--accent)">
+            💬 수정하고 싶은 부분이 있나요?
+          </label>
+          <div style="display:flex;gap:8px;margin-top:6px">
+            <input type="text" id="modify-input" class="form-input"
+                   placeholder="예: 1번 아이디어로 마일스톤 다시 짜줘, 기간을 3일 늘려줘..."/>
+            <button class="btn btn-secondary" style="white-space:nowrap"
+                    onclick="requestModifyPlan()">수정 요청</button>
+          </div>
+        </div>
+      `;
+
+      document.getElementById("ai-result").classList.add("show");
+      document.getElementById("ai-result")
+        .scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+
+    // ── 아이디어 선택 시 modify-input 자동 채우기 ────────────────
+    function selectIdea(ideaId) {
+      const input = document.getElementById("modify-input");
+      if (input) {
+        input.value = `${ideaId}번 아이디어를 기준으로 마일스톤을 다시 짜줘`;
+        input.focus();
+      }
+    }
+
+    // ── 수정 요청 ──────────────────────────────────────────────
+    async function requestModifyPlan() {
+      const modifyText = document.getElementById("modify-input").value.trim();
+      if (!modifyText) { alert("수정할 내용을 입력해주세요."); return; }
+
+      // 기존 폼 데이터 + 수정 요청 합치기
+      const data = getFormData();
+      data.modify_request = modifyText;
+
+      const btn = document.getElementById("gen-btn");
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> 수정 사항 반영 중...';
+
+      try {
+        const res = await fetch("/ai/generate-plan/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+        const json = await res.json();
+        if (!res.ok) { alert(json.error || "오류가 발생했습니다."); return; }
+
+        currentAiPlan = json.ai_plan;
+        renderAiResult(json.ai_plan);
+        document.getElementById("modify-input").value = "";
+
+      } catch (e) {
+        alert("네트워크 오류가 발생했습니다.");
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = "🤖 AI 플랜 생성하기";
+      }
+    }
+
+    // ── 플랜 저장 ─────────────────────────────────────────────────
+    async function savePlan() {
+      if (!currentAiPlan) return;
+      const data = { ...getFormData(), ai_plan: currentAiPlan };
+
+      try {
+        const res = await fetch("/plans/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+        const json = await res.json();
+        if (res.ok) {
+          window.location.href = `/plans/${json.plan_id}/page/`;
+        } else {
+          alert(json.error || "저장 실패");
+        }
+      } catch (e) {
+        alert("네트워크 오류");
+      }
+    }
+
+    // ── 초기화 ────────────────────────────────────────────────────
+    renderSkills();
+</script>
+{% endblock %}

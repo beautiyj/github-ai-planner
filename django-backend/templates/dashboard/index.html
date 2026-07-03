@@ -1,0 +1,113 @@
+<!-- templates/dashboard/index.html - 로그인 후 대시보드 -->
+{% extends "base/base.html" %}
+{% block title %}대시보드 - GitHub AI Planner{% endblock %}
+
+{% block extra_css %}
+<style>
+  .plans-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+    margin-top: 20px;
+  }
+  .plan-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    cursor: pointer;
+    transition: border-color .15s;
+    text-decoration: none;
+    color: var(--text);
+    display: block;
+  }
+  .plan-card:hover { border-color: var(--accent); }
+  .plan-card-title {
+    font-weight: 600;
+    font-size: 15px;
+    margin-bottom: 8px;
+  }
+  .plan-card-meta {
+    color: var(--text2);
+    font-size: 12px;
+    margin-bottom: 12px;
+  }
+  .plan-card-purposes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 12px;
+  }
+  .progress-bar-wrap {
+    background: var(--bg3);
+    border-radius: 4px;
+    height: 6px;
+    overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 4px;
+    transition: width .3s;
+  }
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text2);
+  }
+  .empty-state-icon { font-size: 48px; margin-bottom: 16px; }
+  .empty-state-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 8px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="flex items-center justify-between">
+    <div>
+      <div class="page-title">
+        안녕하세요, {{ user.name|default:user.login }}님 👋
+      </div>
+      <div class="page-subtitle">오늘도 커밋 한 개씩 쌓아가요.</div>
+    </div>
+    <a href="/plans/new/" class="btn btn-primary">+ 새 플랜 만들기</a>
+  </div>
+
+  {% if plans %}
+    <div class="plans-grid">
+      {% for plan in plans %}
+        <a href="/plans/{{ plan.id }}/page/" class="plan-card">
+          <div class="plan-card-title">{{ plan.title }}</div>
+          <div class="plan-card-meta">
+            {% if plan.date_start and plan.date_end %}
+              {{ plan.date_start }} ~ {{ plan.date_end }}
+            {% else %}
+              기간 미정
+            {% endif %}
+            · {{ plan.created_at|date:"Y.m.d" }} 생성
+          </div>
+          <div class="plan-card-purposes">
+            {% for p in plan.purposes %}
+              <span class="badge badge-blue">{{ p }}</span>
+            {% endfor %}
+          </div>
+          <div class="progress-bar-wrap">
+            <div class="progress-bar-fill" style="width: 0%"></div>
+          </div>
+        </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <div class="empty-state-icon">📋</div>
+      <div class="empty-state-title">아직 플랜이 없어요</div>
+      <p>첫 프로젝트 플랜을 만들어보세요. AI가 일정을 짜드려요.</p>
+      <a href="/plans/new/" class="btn btn-primary mt-4">첫 플랜 만들기</a>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

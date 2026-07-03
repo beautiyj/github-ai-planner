@@ -1,0 +1,106 @@
+{% extends "base/base.html" %}
+{% block title %}GitHub AI Planner{% endblock %}
+
+{% block extra_css %}
+<style>
+  .landing {
+    min-height: calc(100vh - 56px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 40px 16px;
+  }
+  .landing-title {
+    font-size: 42px;
+    font-weight: 800;
+    line-height: 1.2;
+    margin-bottom: 16px;
+  }
+  .landing-title span { color: var(--accent); }
+  .landing-desc {
+    color: var(--text2);
+    font-size: 16px;
+    max-width: 480px;
+    margin-bottom: 32px;
+    line-height: 1.7;
+  }
+  .btn-github {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--text);
+    color: var(--bg);
+    padding: 12px 28px;
+    border-radius: var(--radius);
+    font-size: 15px;
+    font-weight: 700;
+    text-decoration: none;
+    transition: opacity .15s;
+  }
+  .btn-github:hover { opacity: .88; }
+  .features {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    max-width: 720px;
+    margin-top: 48px;
+  }
+  .feature-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    text-align: left;
+  }
+  .feature-icon { font-size: 24px; margin-bottom: 10px; }
+  .feature-title { font-weight: 600; margin-bottom: 6px; }
+  .feature-desc { color: var(--text2); font-size: 13px; line-height: 1.5; }
+  @media(max-width: 600px) { .features { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="landing">
+  <div class="landing-title">
+    GitHub 커밋으로<br/>
+    <span>AI가 플랜을 짜드려요</span>
+  </div>
+  <p class="landing-desc">
+    프로젝트 목표와 기술 수준을 입력하면 AI가 일정을 추천해요.
+    매일 커밋 내역을 보고 진행 상황을 자동으로 요약해드려요.
+  </p>
+
+  <a href="/accounts/login/" class="btn-github">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+    </svg>
+    GitHub로 시작하기
+  </a>
+
+  <div class="features">
+    <div class="feature-card">
+      <div class="feature-icon">🤖</div>
+      <div class="feature-title">AI 일정 추천</div>
+      <div class="feature-desc">
+        기술 수준과 목표를 입력하면 AI가 마일스톤과 기간을 추천해줘요.
+      </div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📊</div>
+      <div class="feature-title">커밋 자동 요약</div>
+      <div class="feature-desc">
+        매일 커밋 내역을 AI가 읽고 진행 상황을 자동으로 정리해줘요.
+      </div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🎯</div>
+      <div class="feature-title">진도 추적</div>
+      <div class="feature-desc">
+        목표 대비 진행률을 시각화해서 일정 대비 현황을 알려줘요.
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

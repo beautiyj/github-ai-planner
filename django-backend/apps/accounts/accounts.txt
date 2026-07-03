@@ -1,0 +1,35 @@
+accounts 패키지
+
+계정 관련 정보 기입 패키지.
+회원 인증은 모두 깃허브 계정으로 진행해서 데이터베이스 연동(models.py) 없어도 됨
+주소(urls.py)와 비즈니스 로직(views.py)만으로 구성
+
+패키지 코드 작성 순서
+    [1단계: 외부 API 기획 & 세팅] : 외부 API 사전 기획 및 환경변수 세팅하기
+    GitHub Developer Settings에서 OAuth 앱을 생성 - Client ID와 Client Secret을 발급 & .env 변수 등록
+
+ -> [2단계: URL 주소판 생성] : urls.py에 주소판을 만들고 views.py의 컨트롤러와 연결하기
+    로그인 시작, 콜백(토큰 교환), 로그아웃, 현재 유저 확인 등을 위한 URL 라우팅 정의
+    path("login/", views.GithubLoginView.as_view(), name="login") 형태로 세부 정의
+    (config/urls.py(통합 경로파일)엔 path('accounts/', include('apps.accounts.urls'))만 추가해두면 세부 url 읽음)
+
+ -> [3단계: Views OAuth & 세션 로직 구현] : 인증 및 세션 비즈니스 로직 작성하기
+    https://docs.github.com/ko/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps 가이드 참고
+    깃허브 콜백 함수는 공식가이드에 맞게 메소드 파라미터 확인해서 코드 작성 필요
+
+    GithubLoginView: GitHub 인증 페이지로 사용자를 리다이렉트시키는 로직
+    GithubCallbackView: GitHub이 던져준 code를 받아 requests 라이브러리로 Access Token을 교환하고
+                        유저 정보를 조회하여 request.session['github_user']에 유저 데이터를 굽는 핵심 컨트롤러 로직
+    그 외 로그인/아웃 관련 로직들 추가
+
+ -> [4단계: 로그인 테스트]
+    1) 브라우저에서 http://localhost:8000/accounts/login/ 접속
+    2) 깃허브 로그인 페이지로 리다이렉트되는지 확인
+    3) 깃허브 로그인 후 http://localhost:8000/accounts/callback/로 돌아오는지 확인
+    4) request.session['github_user']에 유저 정보가 잘 들어가는지 확인
+    (+ 게스트로그인에서의 플랜 -> 깃허브 계정으로 로그인하면 플랜 적용되는 부분 github_login 값을 업데이트 로직 콜백함수 안에 넣기)
+
+ -> 스프링부트 리팩토링 시
+    accounts/views.py 파일은 SecurityConfig (Spring Security) + OAuth2UserService 또는 AuthController
+    장고가 자동으로 해주던 request.session 파일은 스프링의 HttpSession 또는 JWT (Json Web Token) 발급 로직
+    형태로 구성하기

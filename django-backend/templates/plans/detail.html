@@ -1,0 +1,356 @@
+{% extends "base/base.html" %}
+{% block title %}{{ plan.title }} - GitHub AI Planner{% endblock %}
+
+{% block extra_css %}
+<style>
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 20px;
+    align-items: start;
+  }
+  @media(max-width: 720px) { .detail-grid { grid-template-columns: 1fr; } }
+
+  .milestone-list { display: flex; flex-direction: column; gap: 0; }
+  .milestone-item {
+    display: flex;
+    gap: 16px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+    align-items: flex-start;
+  }
+  .milestone-item:last-child { border-bottom: none; }
+  .m-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--border);
+    margin-top: 5px;
+    flex-shrink: 0;
+  }
+  .m-dot.active {
+    background: var(--accent);
+    box-shadow: 0 0 0 3px #1f3a5f;
+  }
+  .m-range {
+    font-size: 11px;
+    color: var(--text2);
+    font-family: monospace;
+    margin-bottom: 3px;
+  }
+  .m-task { font-size: 13px; font-weight: 500; }
+  .m-detail { font-size: 12px; color: var(--text2); margin-top: 3px; }
+  .m-tags { display: flex; gap: 4px; margin-top: 5px; flex-wrap: wrap; }
+
+  .summary-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+  .summary-date {
+    font-size: 12px;
+    color: var(--text2);
+    margin-bottom: 6px;
+  }
+  .summary-text { font-size: 13px; line-height: 1.6; }
+  .summary-highlight {
+    margin-top: 8px;
+    padding: 8px 12px;
+    background: var(--bg3);
+    border-left: 3px solid var(--accent);
+    font-size: 12px;
+    color: var(--text2);
+  }
+  .summary-advice {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--text2);
+    font-style: italic;
+  }
+
+  .today-section {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  .commit-list { margin-top: 12px; }
+  .commit-item {
+    display: flex;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .commit-item:last-child { border-bottom: none; }
+  .commit-sha {
+    color: var(--accent);
+    font-family: monospace;
+    min-width: 50px;
+    text-decoration: none;
+  }
+  .commit-sha:hover { text-decoration: underline; }
+  .commit-msg { flex: 1; color: var(--text); }
+  .commit-stat { color: var(--text2); white-space: nowrap; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <!-- 헤더 -->
+  <div class="flex items-center justify-between mb-4">
+    <div>
+      <div class="page-title">{{ plan.title }}</div>
+      <div class="page-subtitle">
+        {% for p in plan.purposes %}
+          <span class="badge badge-blue">{{ p }}</span>
+        {% endfor %}
+        {% if plan.date_start and plan.date_end %}
+          &nbsp; {{ plan.date_start }} ~ {{ plan.date_end }}
+        {% endif %}
+      </div>
+    </div>
+    <a href="/dashboard/" class="btn btn-secondary btn-sm">← 대시보드</a>
+  </div>
+
+  <div class="detail-grid">
+    <!-- 왼쪽: 마일스톤 -->
+    <div>
+      <div class="card">
+        <div style="font-weight:600; margin-bottom:16px">📋 마일스톤</div>
+
+        {% if plan.ai_plan.analysis %}
+          <div style="font-size:13px; color:var(--text2); margin-bottom:16px;
+                      padding:12px; background:var(--bg3);
+                      border-radius:var(--radius)">
+            {{ plan.ai_plan.analysis }}
+          </div>
+        {% endif %}
+
+        <div class="milestone-list">
+          {% for m in plan.ai_plan.milestones %}
+            <div class="milestone-item">
+              <div class="m-dot {% if forloop.first %}active{% endif %}"></div>
+              <div style="flex:1">
+                <div class="m-range">{{ m.range }}</div>
+                <div class="m-task">{{ m.task }}</div>
+                {% if m.detail %}
+                  <div class="m-detail">{{ m.detail }}</div>
+                {% endif %}
+                <div class="m-tags">
+                  {% for tag in m.tags %}
+                    <span class="badge badge-blue">{{ tag }}</span>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+
+        {% if plan.ai_plan.daily_goal %}
+          <div style="margin-top:16px; padding:10px 14px;
+                      background:var(--bg3); border-radius:var(--radius);
+                      font-size:13px">
+            🎯 <strong>일 목표:</strong> {{ plan.ai_plan.daily_goal }}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- 오른쪽: 오늘 커밋 + 요약 -->
+    <div>
+      <!-- 오늘 커밋 가져오기 -->
+      <div class="today-section">
+        <div style="font-weight:600; margin-bottom:12px">
+          📥 오늘 커밋 가져오기
+        </div>
+        <div style="display:flex; gap:10px; margin-bottom:12px">
+          <select id="repo-select" class="form-select" style="flex:1">
+            <option value="">레포 선택...</option>
+          </select>
+          <button class="btn btn-secondary btn-sm"
+                  onclick="loadRepos()">새로고침</button>
+        </div>
+        <button class="btn btn-primary" style="width:100%"
+                onclick="fetchTodayCommits()">
+          오늘 커밋 불러오기
+        </button>
+        <div id="commit-result" class="commit-list" style="display:none"></div>
+        <button id="summarize-btn" class="btn btn-secondary mt-4"
+                style="width:100%; display:none"
+                onclick="summarizeToday()">
+          🤖 AI 요약 생성
+        </button>
+      </div>
+
+      <!-- 최근 일일 요약 -->
+      <div style="font-weight:600; margin-bottom:12px">🗓 최근 요약</div>
+
+      {% if summaries %}
+        {% for s in summaries %}
+          <div class="summary-card">
+            <div class="summary-date">
+              {% if s.mood == "great" %}🔥
+              {% elif s.mood == "good" %}✅
+              {% elif s.mood == "warning" %}⚠️
+              {% else %}🚨{% endif %}
+              {{ s.date }} · {{ s.progress_percent }}% 진행
+            </div>
+            <div class="summary-text">{{ s.ai_summary }}</div>
+            {% if s.highlight %}
+              <div class="summary-highlight">💡 {{ s.highlight }}</div>
+            {% endif %}
+            {% if s.advice %}
+              <div class="summary-advice">→ {{ s.advice }}</div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      {% else %}
+        <div style="color:var(--text2); font-size:13px;
+                    text-align:center; padding:20px">
+          아직 요약이 없어요.<br/>
+          오늘 커밋을 불러와서 AI 요약을 만들어보세요.
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const PLAN_ID = {{ plan.id }};
+const PLAN_START = "{{ plan.date_start|default:'' }}";
+const TOTAL_DAYS = {{ plan.ai_plan.total_days|default:30 }};
+const MILESTONES = {{ plan.ai_plan.milestones|safe }};
+let todayCommits = [];
+
+// ── 레포 목록 불러오기 ────────────────────────────────────────
+async function loadRepos() {
+  try {
+    const res = await fetch("/github/repos/");
+    const json = await res.json();
+    if (!json.success) return;
+
+    const select = document.getElementById("repo-select");
+    select.innerHTML = '<option value="">레포 선택...</option>' +
+      json.repos.map(r =>
+        `<option value="${r.full_name}">
+           ${r.full_name}${r.is_private ? " 🔒" : ""}
+         </option>`
+      ).join("");
+
+    // 연동된 레포 자동 선택
+    const planRepo = "{{ plan.repo_url }}";
+    if (planRepo) select.value = planRepo;
+
+  } catch (e) {
+    console.error("레포 목록 오류:", e);
+  }
+}
+
+// ── 오늘 커밋 불러오기 ───────────────────────────────────────
+async function fetchTodayCommits() {
+  const repo = document.getElementById("repo-select").value;
+  if (!repo) { alert("레포를 선택해주세요."); return; }
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  try {
+    const res = await fetch(`/github/commits/?repo=${repo}&date=${today}`);
+    const json = await res.json();
+    if (!json.success) { alert(json.error); return; }
+
+    todayCommits = json.commits;
+    renderCommits(json.commits);
+  } catch (e) {
+    alert("커밋 조회 오류");
+  }
+}
+
+function renderCommits(commits) {
+  const container = document.getElementById("commit-result");
+  const summarizeBtn = document.getElementById("summarize-btn");
+
+  if (commits.length === 0) {
+    container.innerHTML =
+      '<div style="color:var(--text2);font-size:12px;padding:8px 0">' +
+      '오늘 커밋이 없어요.</div>';
+  } else {
+    container.innerHTML = commits.map(c => `
+      <div class="commit-item">
+        <a href="${c.url}" target="_blank" class="commit-sha">${c.sha}</a>
+        <span class="commit-msg">${c.message.split("\n")[0]}</span>
+        <span class="commit-stat">+${c.additions||0} -${c.deletions||0}</span>
+      </div>
+    `).join("");
+    summarizeBtn.style.display = "block";
+  }
+  container.style.display = "block";
+}
+
+// ── AI 요약 생성 ──────────────────────────────────────────────
+async function summarizeToday() {
+  const btn = document.getElementById("summarize-btn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> AI 요약 중...';
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  // 경과 일수 계산
+  let elapsedDays = 0;
+  if (PLAN_START) {
+    elapsedDays = Math.round(
+      (new Date() - new Date(PLAN_START)) / 86400000
+    );
+  }
+
+  // 현재 마일스톤
+  const currentMilestone = MILESTONES.length > 0
+    ? MILESTONES[0].task : "진행 중";
+
+  try {
+    // 1. AI 요약 생성
+    const res = await fetch("/ai/daily-summary/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        plan_id:          PLAN_ID,
+        date:             today,
+        commits:          todayCommits,
+        current_milestone: currentMilestone,
+        total_days:       TOTAL_DAYS,
+        elapsed_days:     elapsedDays,
+      }),
+    });
+    const json = await res.json();
+    if (!json.success) { alert(json.error); return; }
+
+    // 2. DB에 저장
+    await fetch(`/plans/${PLAN_ID}/summary/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        date:    today,
+        commits: todayCommits,
+        summary: json.summary,
+      }),
+    });
+
+    // 3. 페이지 새로고침
+    location.reload();
+
+  } catch (e) {
+    alert("요약 생성 오류");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = "🤖 AI 요약 생성";
+  }
+}
+
+// ── 초기화 ────────────────────────────────────────────────────
+loadRepos();
+</script>
+{% endblock %}
