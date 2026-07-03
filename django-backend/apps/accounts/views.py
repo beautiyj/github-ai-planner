@@ -4,6 +4,7 @@ from django.shortcuts import redirect
 from django.http import JsonResponse
 from django.views import View
 from apps.plans.models import ProjectPlan  # 👈 플랜 데이터 조작을 위해 임포트 추가
+import uuid #세션키말고 게스트로그인 아이디저장용으로 임포트 추가
 
 
 # 0406 커밋용주석 - GitHub OAuth 로그인/로그아웃 처리
@@ -45,9 +46,10 @@ class GithubCallbackView(View):
             return redirect("/?error=oauth_failed")
 
         # 1. 덮어쓰기 전, 기존 게스트 세션 정보 및 키 '확실하게' 백업 ------------------
+        # 1. 💡 [수정] 세션 키 대신, 우리가 세션 내부에 직접 저장해둔 고유 guest_id를 백업합니다.
         current_user = request.session.get("github_user") or {}
         was_guest = current_user.get("is_guest", False)
-        old_session_key = request.session.session_key  # 스크린샷 1번 시점의 키
+        old_guest_id = request.session.get("guest_id")  # 👈 이 값을 추적할 것입니다.
 
         # code → access_token 교환하기 ---------------------------------------
         token_response = requests.post(
@@ -89,15 +91,15 @@ class GithubCallbackView(View):
             "is_guest": False,  # 게스트 탈출 마킹
         }
 
-        # 2. 🎉 게스트 플랜 데이터 마이그레이션 실행(게스트상태에서 깃허브 로그인 시 플랜 백업) ----------------------
-        if was_guest and old_session_key:
-            # 기존 게스트 세션 키로 저장되어 있던 플랜들을 전부 타겟팅
-            guest_plans = ProjectPlan.objects.filter(guest_session_key=old_session_key)
+        # 2. 🎉 게스트 플랜 데이터 마이그레이션 실행(게스트상태에서 깃허브 로그인 시 플랜 백업)  ----------------------
+        # 계속 연동 안돼서 세션키 대신 고유 마킹 아이디로 변경해서 저장
+        if was_guest and old_guest_id:
+            # 기존 guest_id로 묶여있던 플랜들을 검색 (guest_session_key 필드를 그대로 활용)
+            guest_plans = ProjectPlan.objects.filter(guest_session_key=old_guest_id)
             if guest_plans.exists():
-                # 주인을 깃허브 로그인한 계정으로 바꾸고 게스트 임시 키는 초기화!
                 guest_plans.update(
                     github_login=login_id,
-                    guest_session_key=None
+                    guest_session_key=None  # 연동 완료 후 제거
                 )
 
         return redirect("/dashboard/")
@@ -121,7 +123,7 @@ class MeView(View):
         return JsonResponse({"success": True, "user": github_user})
 
 
-# 0629 게스트용 로그인 로직 추가
+# 0629 게스트용 로그인 로직 추가 0703 수정
 class GuestLoginView(View):
     """게스트 로그인 — GitHub 계정 없이 둘러보기용"""
 
@@ -129,6 +131,10 @@ class GuestLoginView(View):
         # 장고에게 확실하게 세션 아이디(session_key)를 발급받도록 강제 처리
         if not request.session.session_key:
             request.session.create()
+        # 세션 아이디(session_key)를 발급받도록 강제 처리 -> 0703 수정: 세션키 대신 고유 아이디를 발급받도록 변경
+        # 💡 [추가] 장고 세션 키 대신 브라우저가 영구적으로 기억할 고유 UUID 생성 (예: 'guest_abc123...')
+        if "guest_id" not in request.session:
+            request.session["guest_id"] = f"guest_{uuid.uuid4().hex[:12]}"
 
         request.session["github_access_token"] = None
         request.session["github_user"] = {

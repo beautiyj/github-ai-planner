@@ -7,7 +7,7 @@ from .github_client import GitHubClient
 # github_client.py 를 가져다 쓰는 views
 """
 플랜 상세 페이지에서 "오늘 커밋 불러오기" 버튼 클릭
-→ JS 가 /github/commits/?repo=beautiyj/github-ai-planner&date=2025-04-06 호출
+→ JS 가 /github/commits/?repo=내깃허브아이디/레파지토리네임(프젝이름 나는github-ai-planner)&date=2025-04-06 호출
 → CommitListView.get() 실행
 → 오늘 커밋 목록 반환
 → 화면에 커밋 목록 표시

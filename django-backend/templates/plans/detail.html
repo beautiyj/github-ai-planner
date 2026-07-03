@@ -99,21 +99,35 @@
 
 {% block content %}
 <div class="container">
-  <!-- 헤더 -->
-  <div class="flex items-center justify-between mb-4">
-    <div>
-      <div class="page-title">{{ plan.title }}</div>
-      <div class="page-subtitle">
-        {% for p in plan.purposes %}
-          <span class="badge badge-blue">{{ p }}</span>
-        {% endfor %}
-        {% if plan.date_start and plan.date_end %}
-          &nbsp; {{ plan.date_start }} ~ {{ plan.date_end }}
-        {% endif %}
+
+  <!-- 헤더 : 상단 네비(대시보드/수정/삭제) + 제목/뱃지 분리 -->
+  <div class="mb-4">
+
+    <!-- 상단 버튼 줄 -->
+    <div class="flex items-center justify-between" style="margin-bottom:12px">
+      <a href="/dashboard/" class="btn btn-secondary btn-sm">← 대시보드</a>
+      <div class="flex gap-2">
+        <a href="/plans/edit/{{ plan.id }}/" class="btn btn-secondary btn-sm">✏️ 수정</a>
+        <button onclick="deletePlan({{ plan.id }})" class="btn btn-sm"
+                style="background:transparent; color:var(--red); border:1px solid var(--red)">
+          🗑️ 삭제
+        </button>
       </div>
     </div>
-    <a href="/dashboard/" class="btn btn-secondary btn-sm">← 대시보드</a>
+
+    <!-- 플랜 제목 + 목적 뱃지 + 기간 -->
+    <div class="page-title">{{ plan.title }}</div>
+    <div class="page-subtitle">
+      {% for p in plan.purposes %}
+        <span class="badge badge-blue">{{ p }}</span>
+      {% endfor %}
+      {% if plan.date_start and plan.date_end %}
+        &nbsp; {{ plan.date_start }} ~ {{ plan.date_end }}
+      {% endif %}
+    </div>
+
   </div>
+  <!-- 헤더 끝 -->
 
   <div class="detail-grid">
     <!-- 왼쪽: 마일스톤 -->
@@ -317,12 +331,12 @@ async function summarizeToday() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        plan_id:          PLAN_ID,
-        date:             today,
-        commits:          todayCommits,
+        plan_id:           PLAN_ID,
+        date:              today,
+        commits:           todayCommits,
         current_milestone: currentMilestone,
-        total_days:       TOTAL_DAYS,
-        elapsed_days:     elapsedDays,
+        total_days:        TOTAL_DAYS,
+        elapsed_days:      elapsedDays,
       }),
     });
     const json = await res.json();
@@ -347,6 +361,25 @@ async function summarizeToday() {
   } finally {
     btn.disabled = false;
     btn.innerHTML = "🤖 AI 요약 생성";
+  }
+}
+
+// ── 플랜 삭제 ─────────────────────────────────────────────────
+async function deletePlan(planId) {
+  if (!confirm("정말 삭제하시겠습니까?")) return;
+
+  try {
+    const res = await fetch(`/plans/${planId}/`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (res.ok) {
+      window.location.href = "/dashboard/";
+    } else {
+      alert("삭제 실패");
+    }
+  } catch (e) {
+    alert("네트워크 오류");
   }
 }
 

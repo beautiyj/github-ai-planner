@@ -133,9 +133,13 @@
 {% block content %}
 <div class="container">
     <div class="form-wrap">
-        <div class="page-title">새 플랜 만들기</div>
-        <div class="page-subtitle">
-            정보를 입력하면 AI가 프로젝트 일정을 추천해드려요.
+        <div class="header-section" style="margin-bottom: 24px;">
+            <div class="page-title">
+                {% if plan %}플랜 수정하기{% else %}새 플랜 만들기{% endif %}
+            </div>
+            <div class="page-subtitle">
+                {% if plan %}기존 플랜을 수정하고 다시 AI 추천을 받아보세요.{% else %}정보를 입력하면 AI가 프로젝트 일정을 추천해드려요.{% endif %}
+            </div>
         </div>
 
         <!-- 제목 -->
@@ -530,19 +534,31 @@
     }
 
     // ── 플랜 저장 ─────────────────────────────────────────────────
+    // 0703 수정 - 1. 페이지 상단 혹은 스크립트 전역에 수정 모드인지 확인하는 변수를 둡니다.
+    // (템플릿에서 plan 객체가 넘어오면 planId에 값이 들어가고, 없으면 null이 됩니다)
+    const planId = {{ plan.id|default:"null" }};
+
     async function savePlan() {
       if (!currentAiPlan) return;
       const data = { ...getFormData(), ai_plan: currentAiPlan };
 
+      // 2. planId가 있으면 수정(PUT), 없으면 생성(POST)으로 판단
+      const isEditMode = planId !== null;
+      const url = isEditMode ? `/plans/${planId}/` : "/plans/";
+      const method = isEditMode ? "PUT" : "POST";
+
       try {
-        const res = await fetch("/plans/", {
-          method: "POST",
+        const res = await fetch(url, {
+          method: method, // 생성 시엔 POST, 수정 시엔 PUT으로 자동 변경!
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(data),
         });
+
         const json = await res.json();
         if (res.ok) {
-          window.location.href = `/plans/${json.plan_id}/page/`;
+          // 3. 성공 시 페이지 이동
+          const targetId = isEditMode ? planId : json.plan_id;
+          window.location.href = `/plans/${targetId}/page/`;
         } else {
           alert(json.error || "저장 실패");
         }
@@ -553,5 +569,78 @@
 
     // ── 초기화 ────────────────────────────────────────────────────
     renderSkills();
+
+    // ── [추가] 페이지 로드 시 수정 모드라면 기존 데이터 자동 채우기 ──────────
+    document.addEventListener("DOMContentLoaded", () => {
+        {% if plan %}
+        // 1. 기본 텍스트 필드 채우기
+        document.getElementById("title").value = "{{ plan.title }}";
+        document.getElementById("features").value = "{{ plan.features }}";
+        document.getElementById("repo-url").value = "{{ plan.repo_url|default:'' }}";
+        document.getElementById("tools").value = "{{ plan.tools|default:'' }}";
+
+        // 2. 목적 칩 상태 복원
+        {% for purpose in plan.purposes %}
+        document.querySelectorAll("#purpose-chips .chip").forEach(el => {
+            if(el.textContent.trim() === "{{ purpose }}") el.classList.add("on");
+            else if("{{ purpose }}" !== "포트폴리오") { /* 초기값 해제 로직 등 필요 시 추가 */ }
+        });
+        {% endfor %}
+
+        // 3. 날짜 설정
+        {% if plan.date_start %}
+        document.getElementById("date-toggle").checked = true;
+        toggleDate(document.getElementById("date-toggle")); // 토글 UI 활성화
+        document.getElementById("date-start").value = "{{ plan.date_start|date:'Y-m-d' }}";
+        document.getElementById("date-end").value = "{{ plan.date_end|date:'Y-m-d' }}";
+        calcDiff();
+        {% endif %}
+
+        // 4. 기술 수준 상태 복원
+        {% for s in plan.skills %}
+        DEFAULT_SKILLS.forEach((ds, idx) => {
+            if(ds.name === "{{ s.name }}") {
+                const levelIdx = LEVELS.indexOf("{{ s.level }}");
+                ds.level = levelIdx;
+            }
+        });
+        {% endfor %}
+        renderSkills(); // 다시 렌더링
+
+        <!-- 로그인 상황에서 수정 클릭 시 기존 ai답변(플랜)도 그대로 저장-->
+        // 5. 이미 생성된 ai_plan이 있다면 전역 변수에 할당 및 렌더링
+<!--        {% if plan.ai_plan %}-->
+<!--            // 서버에서 넘어온 데이터가 JSON 문자열인지, 파이썬 객체인지 확인이 필요합니다.-->
+<!--            // 보통 |safe 필터를 쓰면 자바스크립트 객체로 잘 들어옵니다.-->
+<!--            currentAiPlan = {{ plan.ai_plan|safe }};-->
+
+<!--            // AI 결과창을 강제로 표시 (display: block)-->
+<!--            const aiResultDiv = document.querySelector(".ai-result");-->
+<!--            if (aiResultDiv) aiResultDiv.classList.add("show");-->
+
+<!--            // 결과 렌더링 함수 호출-->
+<!--            renderAiResult(currentAiPlan);-->
+<!--        {% endif %}-->
+            {% if plan.ai_plan %}
+                    try {
+                        // JSON 문자열이 아닌 객체로 안전하게 처리
+                        const savedData = {{ plan.ai_plan|safe }};
+
+                        // 기존 폼을 지우지 않고 AI 영역만 선택해서 렌더링하도록
+                        // renderAiResult 내부에 id="ai-content" 가 올바른 영역인지 확인하세요.
+                        currentAiPlan = savedData;
+
+                        // AI 결과창을 표시
+                        const aiResultDiv = document.getElementById("ai-result");
+                        if (aiResultDiv) {
+                            aiResultDiv.classList.add("show");
+                            renderAiResult(currentAiPlan);
+                        }
+                    } catch(e) {
+                        console.error("AI 로드 에러:", e);
+                    }
+            {% endif %}
+        {% endif %}
+    });
 </script>
 {% endblock %}

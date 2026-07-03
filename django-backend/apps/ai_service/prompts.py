@@ -41,15 +41,23 @@ def build_plan_prompt(data: dict) -> str:
     idea_keywords = ["아이디어", "추천", "제안", "뭐만들지", "뭐 만들지", "어떤 프로젝트", "응용"]
     needs_idea = any(kw in features for kw in idea_keywords)
 
-    # 수정 요청 컨텍스트 블록
+    # 기존 코드 중 modify_context 생성 부분 수정
     modify_context = ""
     if modify_request:
+        # 기존 데이터를 AI에게 다시 전달하여 이를 바탕으로 수정하게 함
+        # plan.ai_plan을 파라미터로 받아 여기에 포함시켜야 합니다.
+        existing_plan = data.get("existing_plan", {})
         modify_context = f"""
-[⚠️ 최우선 수정 요청]
-사용자가 기존 플랜을 바탕으로 아래 수정을 요청했습니다:
-"{modify_request}"
-이 수정 사항을 반드시 최우선으로 반영하여 전체 플랜을 재구성하세요.
-"""
+    [⚠️ 최우선 수정 요청]
+    사용자가 기존 플랜을 바탕으로 아래 수정을 요청했습니다:
+    "{modify_request}"
+
+    [기존 플랜 데이터]
+    {existing_plan}
+
+    이 수정 사항을 반드시 최우선으로 반영하여 전체 플랜을 재구성하세요. 
+    특히 기존 마일스톤 중 유지해야 할 핵심 구조는 살리고, 수정 요청에 따라 변동되는 부분만 최신화하세요.
+    """
 
     return f"""
 당신은 실무 경험이 풍부한 시니어 개발자이자 프로젝트 멘토입니다.
