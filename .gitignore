@@ -9,10 +9,17 @@ django-backend/.venv/
 django-backend/**/__pycache__/
 django-backend/**/*.py[cod]
 django-backend/** barracks barracks/*$py.class
+django-backend/**/*.egg-info/
+django-backend/dist/
+django-backend/build/
 
 # 로컬 데이터베이스 및 환경 변수 (보안)
 django-backend/db.sqlite3
 django-backend/.env
+**/.env
+.env
+django-backend/**/media/
+django-backend/**/staticfiles/
 
 # 개인 공부용 및 아키텍처 기록 파일
 django-backend/*/projectArchitecture.txt
@@ -25,6 +32,9 @@ spring-backend/.gradle/
 spring-backend/build/
 spring-backend/out/
 spring-backend/bin/
+spring-backend/.settings/
+spring-backend/.project
+spring-backend/.classpath
 
 
 # IDE & OS 전체 프로젝트 공통 툴/시스템 파일 이그노어

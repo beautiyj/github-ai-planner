@@ -1,0 +1,46 @@
+스프링부트 Spring Boot         장고 파일 (.py)             장고 역할
+Entity / Model	              models.py         	    DB 테이블과 직접 매핑되는 ORM 클래스 (동일함)
+Repository / DAO	          models.py 내 내장 기능	    별도 파일 없이 ProjectPlan.objects.get() 형태로 ORM이 DAO 역할 겸
+Controller (Mapping)	      urls.py	                URL 주소를 매핑하여 특정 뷰(컨트롤러)로 던져주는 라우터 역할
+Controller (Logic) + Service  views.py	                HTTP 요청을 받아 비즈니스 로직을 처리하고 응답을 반환하는 핵심 컨트롤러
+DTO (Data Transfer Object)	  request.POST              클라이언트가 보낸 데이터를 파싱하는 딕셔너리(dict)나 장고 폼 객체가 DTO 역할을 수행
+                              / json.loads / Forms
+View (Thymeleaf / JSP)	      templates/ (.html)	    화면을 그려주는 영역 (장고의 Template)
+@SpringBootApplication        apps.py                   메인 클래스(Application.java) 및 자동 구성(Auto-Configuration) 설정과 가장 유사
+                                                        최초 1회 실행되어야 하는 메타데이터와 초기화 로직을 담당
+                                                        (스프링부트의 컴포넌트 스캔(@ComponentScan)을 통해 빈(Bean)을 등록하고 초기화)
+GithubClient                  github_client.py          오직 외부 API 서버(GitHub, Google)와 통신하여 데이터를 긁어오는 순수 기술 인터페이스
+GeminiApiClient               ai_provider.py            관심사 분리, 유지보수 목적으로 외부api 별도로 파일 생성
+
+
+    apps.py: 앞서 다룬 앱 구동 및 명세서 파일
+    models.py: DB 엔티티를 정의하는 파일
+    views.py: 컨트롤러 로직을 작성하는 파일 (껍데기만 생성됨)
+    admin.py: 장고 내장 관리자 페이지 설정 파일
+    tests.py: 테스트 코드 작성 파일
+    migrations/: DB 변경 이력이 쌓이는 폴더
+
+
+장고 파일 - 스프링부트 각 개념 비교 매칭
+models.py = Entity + DAO(Repository) 개념
+  : DB 테이블을 정의한다는 점에서 스프링의 @Entity와 완전히 같습니다.
+
+  차이점: 스프링은 DB에 접근하기 위해 JpaRepository 같은 DAO/Repository 인터페이스를 따로 만드는 반면
+         장고는 models.py에 정의된 모델 클래스가 스스로 DB 접근 기능(objects)을 내장하고 있습니다.
+  예: 스프링의 planRepository.findById(id) ➡️ 장고의 ProjectPlan.objects.get(id=id)
+
+urls.py = @RequestMapping (컨트롤러의 주소판)
+  : 정말 딱 주소와 코드를 연결해 주는 역할만 합니다.
+    스프링에서는 클래스나 메서드 위에 @PostMapping("/ai/generate-plan")처럼 어노테이션으로 주소를 박아넣지만,
+    장고는 대형 지도처럼 urls.py라는 하나의 파일에 주소지들을 모아서 일괄 관리합니다.
+
+views.py = Controller + Service (핵심 비즈니스 로직)
+  : 화면이 아니라 스프링의 컨트롤러(Controller)와 서비스(Service) 역할을 합니다.
+    HTTP 요청을 해석하고, 외부 API(Gemini, GitHub)를 호출하고,
+    DB에 저장하는 모든 굵직한 비즈니스 로직이 이 views.py 안에서 처리됩니다.
+
+DTO 개념 = 장고에서는 주로 JSON 파싱 데이터나 Forms
+  :  스프링에서는 PlanRequestDto 같은 클래스를 엄격하게 선언해서 데이터를 받지만
+     장고(특히 비동기 API)에서는 body = json.loads(request.body)를 통해
+     파이썬 딕셔너리(dict) 형태로 데이터를 쪼개서 가볍게 들고 다니고 이 딕셔너리 객체 자체가 DTO 역할을 대행합니다.
+     (엄격한 검증이 필요할 때는 Django의 forms.Form이나 REST Framework의 Serializer라는 클래스를 DTO처럼 사용합니다.)
