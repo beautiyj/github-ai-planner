@@ -4,16 +4,9 @@ from django.views import View
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 
+from apps.common.auth import login_required_json
 from .ai_provider import call_ai, parse_ai_json
 from .prompts import build_plan_prompt, build_summary_prompt
-
-
-def login_required_json(view_func):
-    def wrapper(request, *args, **kwargs):
-        if not request.session.get("github_user"):
-            return JsonResponse({"error": "로그인이 필요합니다."}, status=401)
-        return view_func(request, *args, **kwargs)
-    return wrapper
 
 
 @method_decorator(csrf_exempt, name="dispatch")

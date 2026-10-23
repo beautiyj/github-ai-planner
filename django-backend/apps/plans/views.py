@@ -6,49 +6,19 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from django.db.models import Q
 
+from apps.common.auth import get_current_github_user, get_guest_key, login_required_json, login_required_redirect
 from .models import ProjectPlan, DailySummary
 from apps.ai_service.prompts import build_plan_prompt
 from apps.ai_service.ai_provider import call_ai
-
-
-def get_current_github_user(request):
-    return request.session.get("github_user") or {}
-
-
-def get_guest_key(request):
-    return request.session.get("guest_id")
-
-
-def is_guest_user(request):
-    return bool(get_current_github_user(request).get("is_guest"))
 
 
 def can_access_plan(request, plan):
     user = get_current_github_user(request)
     if not user:
         return False
-
     if user.get("is_guest"):
         return plan.guest_session_key == get_guest_key(request)
     return plan.github_login == user.get("login")
-
-
-def login_required_redirect(view_func):
-    def wrapper(request, *args, **kwargs):
-        if not get_current_github_user(request):
-            return redirect("/")
-        return view_func(request, *args, **kwargs)
-
-    return wrapper
-
-
-def login_required_json(view_func):
-    def wrapper(request, *args, **kwargs):
-        if not get_current_github_user(request):
-            return JsonResponse({"error": "로그인이 필요합니다."}, status=401)
-        return view_func(request, *args, **kwargs)
-
-    return wrapper
 
 
 class MainView(View):
@@ -99,10 +69,9 @@ class PlanListView(View):
             return JsonResponse({"error": "잘못된 JSON 형식입니다."}, status=400)
 
         github_user = get_current_github_user(request)
-        guest_key = get_guest_key(request)
         plan = ProjectPlan.objects.create(
             github_login=github_user.get("login", "guest"),
-            guest_session_key=guest_key if github_user.get("is_guest") else None,
+            guest_session_key=get_guest_key(request) if github_user.get("is_guest") else None,
             title=body.get("title", ""),
             purposes=body.get("purposes", []),
             date_start=body.get("date_start") or None,
