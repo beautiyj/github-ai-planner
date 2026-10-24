@@ -47,6 +47,36 @@ class RepoListView(View):
             return JsonResponse({"error": str(e)}, status=500)
 
 
+# ── GET /github/repos/{repo}/details ────────────────────────────────────────
+class RepoDetailView(View):
+    """특정 레포의 상세 정보 반환"""
+
+    def get(self, request):
+        client = get_github_client(request)
+        if not client:
+            return JsonResponse({"error": "로그인이 필요합니다."}, status=401)
+
+        repo = request.GET.get("repo")
+        if not repo:
+            return JsonResponse({"error": "repo 파라미터가 필요합니다."}, status=400)
+
+        try:
+            detail = client.get_repo_detail(repo)
+            readme = client.get_repo_readme(repo)
+            github_user = request.session.get("github_user", {})
+            recent_commits = client.get_recent_commits(repo, github_user.get("login"), per_page=5)
+            return JsonResponse({
+                "success": True,
+                "repo": {
+                    **detail,
+                    "readme": readme,
+                    "recent_commits": recent_commits,
+                },
+            })
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
+
+
 # ── GET /github/commits/?repo=owner/name&date=2025-04-25 ─────
 class CommitListView(View):
     """특정 레포의 날짜별 커밋 목록 반환"""

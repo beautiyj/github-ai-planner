@@ -20,6 +20,7 @@ def build_plan_prompt(data: dict) -> str:
     tools          = data.get("tools", "")
     team_size      = data.get("team_size", 1)
     modify_request = data.get("modify_request", "").strip()  # 수정 요청
+    repo_context = data.get("repo_context", {})
 
     # skills 형식: [{"name": "Python", "level": "초급"}, ...]
     skills_text = ", ".join(
@@ -37,7 +38,29 @@ def build_plan_prompt(data: dict) -> str:
     is_portfolio = "포트폴리오" in purposes
     is_study     = "학습용" in purposes
 
-    # 아이디어 추천 요청 감지
+    repo_block = ""
+    if repo_context:
+        repo_name = repo_context.get("name") or repo_url.split("/")[-1] or "기존 레포"
+        repo_description = repo_context.get("description") or "설명 없음"
+        repo_language = repo_context.get("language") or "미확인"
+        repo_readme = repo_context.get("readme") or "README 없음"
+        repo_recent_commits = repo_context.get("recent_commits") or []
+        commit_text = "\n".join(
+            f"- {item.get('date','')}: {item.get('message','')}" for item in repo_recent_commits[:5]
+        ) if repo_recent_commits else "- 최근 커밋 없음"
+        repo_block = f"""
+[기존 GitHub 레포 분석 정보]
+- repo: {repo_name}
+- description: {repo_description}
+- language: {repo_language}
+- repo_url: {repo_url}
+- readme 요약: {repo_readme[:1500]}
+- 최근 커밋:
+{commit_text}
+
+이 레포를 기반으로 플랜을 설계할 때, 현재 코드 구조와 프로젝트 흐름을 유지하면서 개선/확장할 수 있는 방향으로 마일스톤을 구성하세요.
+"""
+
     idea_keywords = ["아이디어", "추천", "제안", "뭐만들지", "뭐 만들지", "어떤 프로젝트", "응용"]
     needs_idea = any(kw in features for kw in idea_keywords)
 
@@ -74,6 +97,7 @@ def build_plan_prompt(data: dict) -> str:
 요청 내용:
 {features}
 {f"연동 레포: {repo_url}" if repo_url else ""}
+{repo_block}
 
 == 작성 규칙 ==
 1. 반드시 아래 JSON 형식만 반환하세요. 앞뒤 설명 없이 JSON만.
@@ -145,16 +169,13 @@ def build_summary_prompt(data: dict) -> str:
 
     if commits:
         commit_list = "\n".join(
-            f"{i+1}. {c.get('message', '')} "
-            f"(+{c.get('additions', 0)} -{c.get('deletions', 0)}줄)"
+            f"{i+1}. {c.get('message', '')} (+{c.get('additions', 0)} -{c.get('deletions', 0)}줄)"
             for i, c in enumerate(commits)
         )
     else:
         commit_list = "오늘 커밋 없음"
 
-    progress_percent = round(
-        (elapsed_days / total_days) * 100
-    ) if total_days else 0
+    progress_percent = round((elapsed_days / total_days) * 100) if total_days else 0
 
     return f"""
 당신은 개발 프로젝트 진행 상황을 분석하는 AI입니다.
