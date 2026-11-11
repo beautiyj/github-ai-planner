@@ -133,6 +133,18 @@
 {% block content %}
 <div class="container">
     <div class="form-wrap">
+        <div id="plan-state"
+             data-plan-id="{{ plan.id|default:'' }}"
+             data-plan-title="{{ plan.title|default:''|escapejs }}"
+             data-plan-features="{{ plan.features|default:''|escapejs }}"
+             data-plan-repo-url="{{ plan.repo_url|default:''|escapejs }}"
+             data-plan-tools="{{ plan.tools|default:''|escapejs }}"
+             data-plan-date-start="{{ plan.date_start|date:'Y-m-d'|default:'' }}"
+             data-plan-date-end="{{ plan.date_end|date:'Y-m-d'|default:'' }}"
+             data-plan-purposes="{{ plan.purposes|join:','|default:'' }}"
+             style="display:none"></div>
+        {% if plan and plan.skills %}{{ plan.skills|json_script:"plan-skills-data" }}{% else %}<script id="plan-skills-data" type="application/json">[]</script>{% endif %}
+        {% if plan and plan.ai_plan %}{{ plan.ai_plan|json_script:"plan-ai-plan-data" }}{% else %}<script id="plan-ai-plan-data" type="application/json">null</script>{% endif %}
         <div class="header-section" style="margin-bottom: 24px;">
             <div class="page-title">
                 {% if plan %}플랜 수정하기{% else %}새 플랜 만들기{% endif %}
@@ -144,10 +156,10 @@
 
         <!-- 제목 -->
         <div class="form-group">
-            <label class="form-label">
+            <label class="form-label" for="title">
                 프로젝트 제목 <span class="required">*</span>
             </label>
-            <input type="text" id="title" class="form-input"
+            <input type="text" id="title" class="form-input" aria-label="프로젝트 제목"
                    placeholder="미정이면 목표를 간단히 적어주세요"/>
         </div>
 
@@ -223,8 +235,16 @@
                 연동할 GitHub 레포
                 <span class="text-muted">(선택)</span>
             </label>
-            <input type="text" id="repo-url" class="form-input"
-                   placeholder="owner/repository-name"/>
+            <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+                <input type="text" id="repo-url" class="form-input" style="flex:1"
+                       placeholder="owner/repository-name"/>
+                <button type="button" class="btn btn-secondary" onclick="loadGitHubRepos()">
+                    레포 불러오기
+                </button>
+            </div>
+            <select id="repo-select" class="form-input" onchange="applyRepoSelection()">
+                <option value="">- 내 GitHub 저장소 선택 -</option>
+            </select>
         </div>
 
         <!-- AI 생성 버튼 -->
@@ -254,7 +274,6 @@
 {% block extra_js %}
 <script>
     // ── 기술 목록 초기값 ─────────────────────────────────────────
-    // level: -1 = 선택 안 함, 0 = 입문, 1 = 초급, 2 = 중급, 3 = 고급
     const DEFAULT_SKILLS = [
       { name: "Python",        level: -1 },
       { name: "Java",          level: -1 },
@@ -262,19 +281,33 @@
       { name: "백엔드",        level: -1 },
       { name: "프론트엔드",    level: -1 },
       { name: "DB / SQL",      level: -1 },
-      { name: "Android / iOS", level: -1 },  // Android → Android / iOS 수정
+      { name: "Android / iOS", level: -1 },
     ];
     const LEVELS = ["입문", "초급", "중급", "고급"];
     let currentAiPlan = null;
 
-    // ── 스킬 행 렌더링 ────────────────────────────────────────────
+    const planStateEl = document.getElementById("plan-state");
+    const planState = planStateEl ? {
+      id: planStateEl.dataset.planId ? Number(planStateEl.dataset.planId) : null,
+      title: planStateEl.dataset.planTitle || "",
+      features: planStateEl.dataset.planFeatures || "",
+      repoUrl: planStateEl.dataset.planRepoUrl || "",
+      tools: planStateEl.dataset.planTools || "",
+      dateStart: planStateEl.dataset.planDateStart || "",
+      dateEnd: planStateEl.dataset.planDateEnd || "",
+      purposes: (planStateEl.dataset.planPurposes || "")
+        .split(",")
+        .map(v => v.trim())
+        .filter(Boolean),
+    } : { id: null, title: "", features: "", repoUrl: "", tools: "", dateStart: "", dateEnd: "", purposes: [] };
+    const planId = planState.id;
+
     function renderSkills() {
       const container = document.getElementById("skill-list");
       container.innerHTML = DEFAULT_SKILLS.map((skill, si) => `
         <div class="skill-row">
           <span class="skill-name">${skill.name}</span>
           <div class="skill-levels">
-            <!-- 선택 안 함 버튼 -->
             <div class="lvl ${skill.level === -1 ? "on" : ""}"
                  onclick="setLevel(${si}, -1)"
                  style="${skill.level === -1 ? "" : "opacity:0.5"}">선택 안 함</div>
@@ -292,10 +325,8 @@
       renderSkills();
     }
 
-    // ── 칩 토글 ──────────────────────────────────────────────────
     function toggleChip(el) { el.classList.toggle("on"); }
 
-    // ── 날짜 토글 ─────────────────────────────────────────────────
     function toggleDate(cb) {
       const row = document.getElementById("date-row");
       row.style.opacity = cb.checked ? "1" : ".4";
@@ -313,41 +344,28 @@
     document.getElementById("date-start").addEventListener("change", calcDiff);
     document.getElementById("date-end").addEventListener("change", calcDiff);
 
-    // ── 폼 데이터 수집 ────────────────────────────────────────────
     function getFormData() {
       const dateOn = document.getElementById("date-toggle").checked;
       return {
-        title:      document.getElementById("title").value.trim(),
-        purposes:   [...document.querySelectorAll("#purpose-chips .chip.on")]
-                      .map(el => el.textContent.trim()),
+        title: document.getElementById("title").value.trim(),
+        purposes: [...document.querySelectorAll("#purpose-chips .chip.on")]
+          .map(el => el.textContent.trim()),
         date_start: dateOn ? document.getElementById("date-start").value : "",
-        date_end:   dateOn ? document.getElementById("date-end").value : "",
-        // level -1 (선택 안 함) 은 AI 프롬프트에서 제외
-        skills:     DEFAULT_SKILLS
-                      .filter(s => s.level >= 0)
-                      .map(s => ({
-                        name: s.name,
-                        level: LEVELS[s.level]
-                      })),
-        features:   document.getElementById("features").value.trim(),
-        repo_url:   document.getElementById("repo-url").value.trim(),
-        tools:      document.getElementById("tools").value.trim(),
+        date_end: dateOn ? document.getElementById("date-end").value : "",
+        skills: DEFAULT_SKILLS
+          .filter(s => s.level >= 0)
+          .map(s => ({ name: s.name, level: LEVELS[s.level] })),
+        features: document.getElementById("features").value.trim(),
+        repo_url: document.getElementById("repo-url").value.trim(),
+        tools: document.getElementById("tools").value.trim(),
       };
     }
 
-    // ── AI 플랜 생성 ──────────────────────────────────────────────
     async function generatePlan() {
       const data = getFormData();
-
-      if (!data.title) {
-        alert("프로젝트 제목을 입력해주세요."); return;
-      }
-      if (!data.purposes.length) {
-        alert("목적을 하나 이상 선택해주세요."); return;
-      }
-      if (!data.features) {
-        alert("구현하고 싶은 기능을 입력해주세요."); return;
-      }
+      if (!data.title) { alert("프로젝트 제목을 입력해주세요."); return; }
+      if (!data.purposes.length) { alert("목적을 하나 이상 선택해주세요."); return; }
+      if (!data.features) { alert("구현하고 싶은 기능을 입력해주세요."); return; }
 
       const btn = document.getElementById("gen-btn");
       btn.disabled = true;
@@ -364,7 +382,6 @@
 
         currentAiPlan = json.ai_plan;
         renderAiResult(json.ai_plan);
-
       } catch (e) {
         alert("네트워크 오류가 발생했습니다.");
       } finally {
@@ -373,7 +390,6 @@
       }
     }
 
-    // ── AI 결과 렌더링 ────────────────────────────────────────────
     const TAG_CLASS = {
       "백엔드": "badge-blue",
       "프론트엔드": "badge-green",
@@ -386,43 +402,25 @@
     function renderAiResult(plan) {
       const content = document.getElementById("ai-content");
       const warning = plan.warning_message
-        ? `<div class="warning-box">⚠️ ${plan.warning_message}</div>` : "";
+        ? `<div class="warning-box">⚠️ ${plan.warning_message}</div>`
+        : "";
 
-      // ── 아이디어 카드 렌더링 ──────────────────────────────────
       const ideasHtml = (plan.ideas && plan.ideas.length > 0)
         ? `
           <div style="margin-bottom:16px">
-            <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:10px">
-              💡 AI 추천 아이디어
-            </div>
+            <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:10px">💡 AI 추천 아이디어</div>
             <div style="display:flex;flex-direction:column;gap:10px">
               ${plan.ideas.map(idea => `
-                <div style="
-                  background:var(--bg3);
-                  border:1px solid var(--border);
-                  border-radius:var(--radius);
-                  padding:14px;
-                  cursor:pointer;
-                  transition:border-color .15s;
-                "
-                onmouseover="this.style.borderColor='var(--accent)'"
-                onmouseout="this.style.borderColor='var(--border)'"
-                onclick="selectIdea(${idea.id})">
+                <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:14px;cursor:pointer;transition:border-color .15s;"
+                     onmouseover="this.style.borderColor='var(--accent)'"
+                     onmouseout="this.style.borderColor='var(--border)'"
+                     onclick="selectIdea(${idea.id})">
                   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-                    <span style="font-weight:600;font-size:13px">
-                      ${idea.id}. ${idea.title}
-                    </span>
-                    <span class="badge ${
-                      idea.difficulty === '하' ? 'badge-green' :
-                      idea.difficulty === '중' ? 'badge-orange' : 'badge-red'
-                    }">난이도 ${idea.difficulty}</span>
+                    <span style="font-weight:600;font-size:13px">${idea.id}. ${idea.title}</span>
+                    <span class="badge ${idea.difficulty === '하' ? 'badge-green' : idea.difficulty === '중' ? 'badge-orange' : 'badge-red'}">난이도 ${idea.difficulty}</span>
                   </div>
-                  <div style="font-size:12px;color:var(--text2);margin-bottom:4px">
-                    🔧 ${idea.features}
-                  </div>
-                  <div style="font-size:12px;color:var(--accent)">
-                    ✨ ${idea.difference}
-                  </div>
+                  <div style="font-size:12px;color:var(--text2);margin-bottom:4px">🔧 ${idea.features}</div>
+                  <div style="font-size:12px;color:var(--accent)">✨ ${idea.difference}</div>
                 </div>
               `).join("")}
             </div>
@@ -435,15 +433,9 @@
           <div style="flex:1">
             <div class="milestone-task">${m.task}</div>
             <div class="milestone-tags">
-              ${(m.tags || []).map(t =>
-                `<span class="badge ${TAG_CLASS[t] || "badge-blue"}">${t}</span>`
-              ).join("")}
+              ${(m.tags || []).map(t => `<span class="badge ${TAG_CLASS[t] || "badge-blue"}">${t}</span>`).join("")}
             </div>
-            ${m.detail
-              ? `<div style="font-size:12px;color:var(--text2);margin-top:4px">
-                   ${m.detail}
-                 </div>`
-              : ""}
+            ${m.detail ? `<div style="font-size:12px;color:var(--text2);margin-top:4px">${m.detail}</div>` : ""}
           </div>
         </div>
       `).join("");
@@ -453,44 +445,30 @@
         <div class="ai-analysis">
           <div style="font-weight:600;margin-bottom:6px">분석 결과</div>
           <div>${plan.analysis}</div>
-          ${plan.stack_advice
-            ? `<div style="color:var(--text2);margin-top:6px">${plan.stack_advice}</div>`
-            : ""}
+          ${plan.stack_advice ? `<div style="color:var(--text2);margin-top:6px">${plan.stack_advice}</div>` : ""}
           <div style="margin-top:8px;color:var(--accent);font-size:12px">
             추천 기간: <strong>${plan.total_days}일</strong>
-            ${plan.recommended_end_date
-              ? ` · 완료 목표: ${plan.recommended_end_date}` : ""}
+            ${plan.recommended_end_date ? ` · 완료 목표: ${plan.recommended_end_date}` : ""}
             &nbsp;·&nbsp; 일 목표: ${plan.daily_goal}
           </div>
         </div>
-
         ${ideasHtml}
-
-        <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:10px">
-          📋 마일스톤
-        </div>
+        <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:10px">📋 마일스톤</div>
         <div class="milestone-list">${milestones}</div>
-
-        <!-- 수정 요청 영역 -->
         <div style="margin-top:20px;padding-top:16px;border-top:1px dashed var(--border)">
-          <label class="form-label" style="color:var(--accent)">
-            💬 수정하고 싶은 부분이 있나요?
-          </label>
+          <label class="form-label" style="color:var(--accent)">💬 수정하고 싶은 부분이 있나요?</label>
           <div style="display:flex;gap:8px;margin-top:6px">
             <input type="text" id="modify-input" class="form-input"
                    placeholder="예: 1번 아이디어로 마일스톤 다시 짜줘, 기간을 3일 늘려줘..."/>
-            <button class="btn btn-secondary" style="white-space:nowrap"
-                    onclick="requestModifyPlan()">수정 요청</button>
+            <button class="btn btn-secondary" style="white-space:nowrap" onclick="requestModifyPlan()">수정 요청</button>
           </div>
         </div>
       `;
 
       document.getElementById("ai-result").classList.add("show");
-      document.getElementById("ai-result")
-        .scrollIntoView({ behavior: "smooth", block: "nearest" });
+      document.getElementById("ai-result").scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
 
-    // ── 아이디어 선택 시 modify-input 자동 채우기 ────────────────
     function selectIdea(ideaId) {
       const input = document.getElementById("modify-input");
       if (input) {
@@ -499,12 +477,10 @@
       }
     }
 
-    // ── 수정 요청 ──────────────────────────────────────────────
     async function requestModifyPlan() {
       const modifyText = document.getElementById("modify-input").value.trim();
       if (!modifyText) { alert("수정할 내용을 입력해주세요."); return; }
 
-      // 기존 폼 데이터 + 수정 요청 합치기
       const data = getFormData();
       data.modify_request = modifyText;
 
@@ -524,7 +500,6 @@
         currentAiPlan = json.ai_plan;
         renderAiResult(json.ai_plan);
         document.getElementById("modify-input").value = "";
-
       } catch (e) {
         alert("네트워크 오류가 발생했습니다.");
       } finally {
@@ -533,30 +508,22 @@
       }
     }
 
-    // ── 플랜 저장 ─────────────────────────────────────────────────
-    // 0703 수정 - 1. 페이지 상단 혹은 스크립트 전역에 수정 모드인지 확인하는 변수를 둡니다.
-    // (템플릿에서 plan 객체가 넘어오면 planId에 값이 들어가고, 없으면 null이 됩니다)
-    const planId = {{ plan.id|default:"null" }};
-
     async function savePlan() {
       if (!currentAiPlan) return;
       const data = { ...getFormData(), ai_plan: currentAiPlan };
-
-      // 2. planId가 있으면 수정(PUT), 없으면 생성(POST)으로 판단
       const isEditMode = planId !== null;
       const url = isEditMode ? `/plans/${planId}/` : "/plans/";
       const method = isEditMode ? "PUT" : "POST";
 
       try {
         const res = await fetch(url, {
-          method: method, // 생성 시엔 POST, 수정 시엔 PUT으로 자동 변경!
+          method,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(data),
         });
-
         const json = await res.json();
+
         if (res.ok) {
-          // 3. 성공 시 페이지 이동
           const targetId = isEditMode ? planId : json.plan_id;
           window.location.href = `/plans/${targetId}/page/`;
         } else {
@@ -567,80 +534,110 @@
       }
     }
 
-    // ── 초기화 ────────────────────────────────────────────────────
-    renderSkills();
+    function hydrateEditMode() {
+      const titleEl = document.getElementById("title");
+      const featuresEl = document.getElementById("features");
+      const repoUrlEl = document.getElementById("repo-url");
+      const toolsEl = document.getElementById("tools");
+      const dateToggleEl = document.getElementById("date-toggle");
+      const dateStartEl = document.getElementById("date-start");
+      const dateEndEl = document.getElementById("date-end");
 
-    // ── [추가] 페이지 로드 시 수정 모드라면 기존 데이터 자동 채우기 ──────────
-    document.addEventListener("DOMContentLoaded", () => {
-        {% if plan %}
-        // 1. 기본 텍스트 필드 채우기
-        document.getElementById("title").value = "{{ plan.title }}";
-        document.getElementById("features").value = "{{ plan.features }}";
-        document.getElementById("repo-url").value = "{{ plan.repo_url|default:'' }}";
-        document.getElementById("tools").value = "{{ plan.tools|default:'' }}";
+      if (planState.title) titleEl.value = planState.title;
+      if (planState.features) featuresEl.value = planState.features;
+      if (planState.repoUrl) repoUrlEl.value = planState.repoUrl;
+      if (planState.tools) toolsEl.value = planState.tools;
 
-        // 2. 목적 칩 상태 복원
-        {% for purpose in plan.purposes %}
-        document.querySelectorAll("#purpose-chips .chip").forEach(el => {
-            if(el.textContent.trim() === "{{ purpose }}") el.classList.add("on");
-            else if("{{ purpose }}" !== "포트폴리오") { /* 초기값 해제 로직 등 필요 시 추가 */ }
+      if (planState.purposes.length) {
+        [...document.querySelectorAll("#purpose-chips .chip")].forEach(chip => {
+          const text = chip.textContent.trim();
+          chip.classList.toggle("on", planState.purposes.includes(text));
         });
-        {% endfor %}
+      }
 
-        // 3. 날짜 설정
-        {% if plan.date_start %}
-        document.getElementById("date-toggle").checked = true;
-        toggleDate(document.getElementById("date-toggle")); // 토글 UI 활성화
-        document.getElementById("date-start").value = "{{ plan.date_start|date:'Y-m-d' }}";
-        document.getElementById("date-end").value = "{{ plan.date_end|date:'Y-m-d' }}";
+      if (planState.dateStart || planState.dateEnd) {
+        dateToggleEl.checked = true;
+        toggleDate(dateToggleEl);
+        if (planState.dateStart) dateStartEl.value = planState.dateStart;
+        if (planState.dateEnd) dateEndEl.value = planState.dateEnd;
         calcDiff();
-        {% endif %}
+      }
 
-        // 4. 기술 수준 상태 복원
-        {% for s in plan.skills %}
-        DEFAULT_SKILLS.forEach((ds, idx) => {
-            if(ds.name === "{{ s.name }}") {
-                const levelIdx = LEVELS.indexOf("{{ s.level }}");
-                ds.level = levelIdx;
+      const skillsScript = document.getElementById("plan-skills-data");
+      if (skillsScript && skillsScript.textContent.trim()) {
+        try {
+          const savedSkills = JSON.parse(skillsScript.textContent);
+          savedSkills.forEach(skill => {
+            const match = DEFAULT_SKILLS.find(ds => ds.name === skill.name);
+            if (match) {
+              const levelIdx = LEVELS.indexOf(skill.level);
+              if (levelIdx >= 0) match.level = levelIdx;
             }
-        });
-        {% endfor %}
-        renderSkills(); // 다시 렌더링
+          });
+          renderSkills();
+        } catch (e) {
+          console.error("Skill data load error:", e);
+        }
+      }
 
-        <!-- 로그인 상황에서 수정 클릭 시 기존 ai답변(플랜)도 그대로 저장-->
-        // 5. 이미 생성된 ai_plan이 있다면 전역 변수에 할당 및 렌더링
-<!--        {% if plan.ai_plan %}-->
-<!--            // 서버에서 넘어온 데이터가 JSON 문자열인지, 파이썬 객체인지 확인이 필요합니다.-->
-<!--            // 보통 |safe 필터를 쓰면 자바스크립트 객체로 잘 들어옵니다.-->
-<!--            currentAiPlan = {{ plan.ai_plan|safe }};-->
+      const aiPlanScript = document.getElementById("plan-ai-plan-data");
+      if (aiPlanScript && aiPlanScript.textContent.trim() && aiPlanScript.textContent.trim() !== "null") {
+        try {
+          currentAiPlan = JSON.parse(aiPlanScript.textContent);
+          const aiResultDiv = document.getElementById("ai-result");
+          if (aiResultDiv) {
+            aiResultDiv.classList.add("show");
+            renderAiResult(currentAiPlan);
+          }
+        } catch (e) {
+          console.error("AI load error:", e);
+        }
+      }
+    }
 
-<!--            // AI 결과창을 강제로 표시 (display: block)-->
-<!--            const aiResultDiv = document.querySelector(".ai-result");-->
-<!--            if (aiResultDiv) aiResultDiv.classList.add("show");-->
-
-<!--            // 결과 렌더링 함수 호출-->
-<!--            renderAiResult(currentAiPlan);-->
-<!--        {% endif %}-->
-            {% if plan.ai_plan %}
-                    try {
-                        // JSON 문자열이 아닌 객체로 안전하게 처리
-                        const savedData = {{ plan.ai_plan|safe }};
-
-                        // 기존 폼을 지우지 않고 AI 영역만 선택해서 렌더링하도록
-                        // renderAiResult 내부에 id="ai-content" 가 올바른 영역인지 확인하세요.
-                        currentAiPlan = savedData;
-
-                        // AI 결과창을 표시
-                        const aiResultDiv = document.getElementById("ai-result");
-                        if (aiResultDiv) {
-                            aiResultDiv.classList.add("show");
-                            renderAiResult(currentAiPlan);
-                        }
-                    } catch(e) {
-                        console.error("AI 로드 에러:", e);
-                    }
-            {% endif %}
-        {% endif %}
+    document.addEventListener("DOMContentLoaded", () => {
+      renderSkills();
+      hydrateEditMode();
     });
+
+    async function loadGitHubRepos() {
+      try {
+        const res = await fetch("/github/repos/");
+        const json = await res.json();
+        if (!res.ok) {
+          alert(json.error || "GitHub 저장소를 불러오지 못했습니다.");
+          return;
+        }
+
+        const select = document.getElementById("repo-select");
+        const input = document.getElementById("repo-url");
+        const repos = json.repos || [];
+
+        select.innerHTML = '<option value="">- 내 GitHub 저장소 선택 -</option>' + repos.map(repo => `
+          <option value="${repo.full_name}">${repo.full_name}</option>
+        `).join("");
+
+        if (repos.length === 0) {
+          alert("연동 가능한 GitHub 저장소가 없습니다.");
+          return;
+        }
+
+        if (input.value.trim()) {
+          select.value = input.value.trim();
+        }
+      } catch (e) {
+        alert("GitHub 저장소 목록을 불러오는 중 오류가 발생했습니다.");
+      }
+    }
+
+    function applyRepoSelection() {
+      const select = document.getElementById("repo-select");
+      const input = document.getElementById("repo-url");
+      const value = select.value.trim();
+      if (value) {
+        input.value = value;
+      }
+    }
+
 </script>
 {% endblock %}

@@ -1,14 +1,15 @@
 import json
 from datetime import date
-from django.http import JsonResponse
-from django.views import View
-from django.utils.decorators import method_decorator
-from django.views.decorators.csrf import csrf_exempt
-from django.shortcuts import get_object_or_404
 
-from apps.common.auth import login_required_json, get_current_github_user, get_guest_key
-from apps.plans.models import ProjectPlan, DailySummary
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
+from django.utils.decorators import method_decorator
+from django.views import View
+from django.views.decorators.csrf import csrf_exempt
+
+from apps.common.auth import get_current_github_user, get_guest_key, login_required_json
 from apps.github_api.github_client import GitHubClient
+from apps.plans.models import DailySummary, ProjectPlan
 from .ai_provider import call_ai, parse_ai_json
 from .prompts import build_plan_prompt, build_summary_prompt
 
@@ -27,6 +28,31 @@ def get_github_client(request):
     if not access_token:
         return None
     return GitHubClient(access_token)
+
+
+def build_repo_context(request, repo_url):
+    if not repo_url:
+        return {}
+
+    client = get_github_client(request)
+    if not client:
+        return {}
+
+    try:
+        repo_name = repo_url.rstrip("/")
+        detail = client.get_repo_detail(repo_name)
+        readme = client.get_repo_readme(repo_name)
+        github_user = request.session.get("github_user", {})
+        recent_commits = client.get_recent_commits(repo_name, github_user.get("login"), per_page=5)
+        return {
+            "name": detail.get("name", repo_name.split("/")[-1]),
+            "description": detail.get("description", ""),
+            "language": detail.get("language", ""),
+            "readme": readme,
+            "recent_commits": recent_commits,
+        }
+    except Exception:
+        return {}
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -50,25 +76,7 @@ class GeneratePlanView(View):
         if not features:
             return JsonResponse({"error": "구현 기능을 입력해주세요."}, status=400)
 
-        repo_context = {}
-        if repo_url:
-            client = get_github_client(request)
-            if client:
-                try:
-                    repo_name = repo_url.rstrip("/")
-                    detail = client.get_repo_detail(repo_name)
-                    readme = client.get_repo_readme(repo_name)
-                    github_user = request.session.get("github_user", {})
-                    recent_commits = client.get_recent_commits(repo_name, github_user.get("login"), per_page=5)
-                    repo_context = {
-                        "name": detail.get("name", repo_name.split("/")[-1]),
-                        "description": detail.get("description", ""),
-                        "language": detail.get("language", ""),
-                        "readme": readme,
-                        "recent_commits": recent_commits,
-                    }
-                except Exception:
-                    repo_context = {}
+        repo_context = build_repo_context(request, repo_url)
 
         try:
             prompt_body = dict(body)

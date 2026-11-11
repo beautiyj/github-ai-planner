@@ -70,26 +70,51 @@ def _call_gemini(prompt: str) -> str:
 
 def call_ai(prompt: str) -> dict:
     text = _call_gemini(prompt)
-    return {"text": text, "provider": "gemini"}
+    return {"text": text.strip(), "provider": "gemini"}
 
 
-def parse_ai_json(raw: str) -> dict:
+def parse_ai_json(raw):
+    if isinstance(raw, dict):
+        if "text" in raw and isinstance(raw["text"], str):
+            return parse_ai_json(raw["text"])
+        return raw
+
+    if isinstance(raw, list):
+        return {"items": raw}
+
     if raw is None:
         raise ValueError("AI 응답이 비어 있습니다.")
 
-    text = raw.strip()
+    text = str(raw).strip()
     if not text:
         raise ValueError("AI 응답이 비어 있습니다.")
 
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
-        text = re.sub(r"\s*```$", "", text)
+    cleaned = text.replace("\r\n", "\n")
+    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+    cleaned = re.sub(r"^(?:json|response|답변)\s*:\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = cleaned.strip()
 
-    cleaned = text.strip()
+    if not cleaned:
+        raise ValueError("AI 응답이 비어 있습니다.")
+
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError:
         match = re.search(r"(\{.*\}|\[.*\])", cleaned, flags=re.DOTALL)
         if match:
-            return json.loads(match.group(1))
-        raise
+            try:
+                return json.loads(match.group(1))
+            except json.JSONDecodeError:
+                pass
+
+        fallback = cleaned
+        if "\n" in fallback:
+            fallback = fallback.split("\n")[-1].strip()
+        if fallback.startswith("{") or fallback.startswith("["):
+            try:
+                return json.loads(fallback)
+            except json.JSONDecodeError:
+                pass
+
+        raise ValueError("AI 응답을 JSON으로 파싱할 수 없습니다.")

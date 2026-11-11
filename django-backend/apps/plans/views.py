@@ -1,15 +1,20 @@
 import json
 from django.http import JsonResponse
-from django.shortcuts import render, redirect, get_object_or_404
-from django.views import View
+from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.decorators import method_decorator
+from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.db.models import Q
 
-from apps.common.auth import get_current_github_user, get_guest_key, login_required_json, login_required_redirect
-from .models import ProjectPlan, DailySummary
+from apps.ai_service.ai_provider import call_ai, parse_ai_json
 from apps.ai_service.prompts import build_plan_prompt
-from apps.ai_service.ai_provider import call_ai
+from apps.common.auth import (
+    get_current_github_user,
+    get_guest_key,
+    login_required_json,
+    login_required_redirect,
+)
+from .models import DailySummary, ProjectPlan
 
 
 def can_access_plan(request, plan):
@@ -129,14 +134,17 @@ class PlanDetailView(View):
 
         plan.title = body.get("title", plan.title)
         plan.features = body.get("features", plan.features)
+        plan.repo_url = body.get("repo_url", plan.repo_url)
 
         modify_request = body.get("modify_request")
         if modify_request:
             prompt_data = body.copy()
             prompt_data["existing_plan"] = plan.ai_plan
+            prompt_data["repo_url"] = plan.repo_url
             prompt = build_plan_prompt(prompt_data)
             new_ai_result = call_ai(prompt)
-            plan.ai_plan = new_ai_result.get("text", plan.ai_plan)
+            parsed = parse_ai_json(new_ai_result.get("text", plan.ai_plan))
+            plan.ai_plan = parsed if isinstance(parsed, dict) else {"text": parsed}
 
         plan.save()
         return JsonResponse({"success": True, "ai_plan": plan.ai_plan})
